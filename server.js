@@ -1,31 +1,39 @@
-const net = require("net");
-const cliProgress = require("cli-progress");
-const _colors = require("colors");
+import { createServer } from "net";
+import { SingleBar, Presets } from "cli-progress";
+import { blue } from "colors";
 require("events").EventEmitter.defaultMaxListeners = 0;
 require("dotenv").config();
-const ftpu = require("./file_transfer_protocol_utils.js");
+import {
+  DeviceDescriptor,
+  LogString,
+  ParseCmd,
+  IsCmdValid,
+  CmdHasLengthField,
+  GetExpectedCommandLength,
+  StateMachine
+} from "./file_transfer_protocol_utils.js";
 let { SERVER_PORT } = process.env;
 
 const main = async () => {
   const buffer_size = 20000;
 
-  let serverParser = net.createServer((c) => {
+  let serverParser = createServer((c) => {
     try {
-      const bar1 = new cliProgress.SingleBar(
+      const bar1 = new SingleBar(
         {
           format:
             "Download Progress |" +
-            _colors.blue("{bar}") +
+            blue("{bar}") +
             "| {percentage}% || {value}/{total} Chunks || ETA: {eta} seconds",
           barsize: 50,
           hideCursor: true
         },
-        cliProgress.Presets.shades_grey
+        Presets.shades_grey
       );
 
       let tcp_buff = Buffer.alloc(0);
       let stateMachine = 0;
-      let deviceStatus = new ftpu.DeviceDescriptor();
+      let deviceStatus = new DeviceDescriptor();
       console.log(
         "[SERVER] client connected: " + c.remoteAddress + ":" + c.remotePort
       );
@@ -38,10 +46,10 @@ const main = async () => {
       function onConnData(d) {
         let cmd_size = 0;
         let cmd_id = 0;
-        console.log(d.length, "---");
+
         if (d.length < buffer_size) {
           tcp_buff = Buffer.concat([tcp_buff, d]);
-          ftpu.LogString(
+          LogString(
             "Data from: " +
               c.remoteAddress +
               "[" +
@@ -51,21 +59,21 @@ const main = async () => {
 
           while (1) {
             if (tcp_buff.length >= 4) {
-              cmd_id = ftpu.ParseCmd(tcp_buff);
+              cmd_id = ParseCmd(tcp_buff);
 
               //ftpu.LogString("Received command id " + cmd_id);
-              if (ftpu.IsCmdValid(cmd_id)) {
-                if (ftpu.CmdHasLengthField(cmd_id)) {
+              if (IsCmdValid(cmd_id)) {
+                if (CmdHasLengthField(cmd_id)) {
                   cmd_size = tcp_buff.readUInt16BE(2) + 4;
                 } else {
-                  cmd_size = ftpu.GetExpectedCommandLength(cmd_id);
+                  cmd_size = GetExpectedCommandLength(cmd_id);
                 }
-                ftpu.LogString("CMD size: " + cmd_size);
+                LogString("CMD size: " + cmd_size);
                 if (tcp_buff.length >= cmd_size) {
                   /* Time to parse */
-                  ftpu.LogString("Passing CMD with ID " + cmd_id);
+                  LogString("Passing CMD with ID " + cmd_id);
                   // console.log("Passing CMD with ID " + cmd_id);
-                  stateMachine = ftpu.StateMachine(
+                  stateMachine = StateMachine(
                     stateMachine,
                     c,
                     cmd_id,
@@ -75,9 +83,9 @@ const main = async () => {
                   );
                   if (tcp_buff.length > cmd_size) {
                     tcp_buff = tcp_buff.slice(cmd_size, tcp_buff.length);
-                    ftpu.LogString("Remaining in buffer " + tcp_buff.length);
+                    LogString("Remaining in buffer " + tcp_buff.length);
                   } else {
-                    ftpu.LogString("Clearing buffer");
+                    LogString("Clearing buffer");
                     tcp_buff = Buffer.alloc(0);
                   }
                 } else {

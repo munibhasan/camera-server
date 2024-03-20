@@ -13,9 +13,11 @@ const s3 = new AWS.S3({
   region
 });
 var amqp = require("amqplib/callback_api");
-var MongoClient = require("mongodb").MongoClient;
-const url =
-  "mongodb+srv://Wrapper:D2zQcgJvtnKS4Jkr@vtracksolutions.nih4b.mongodb.net/VtrackV1?retryWrites=true&w=majority";
+const { mongoose } = require("./mongoose.service");
+// var MongoClient = require("mongodb").MongoClient;
+
+// const url =
+//   "mongodb+srv://Wrapper:D2zQcgJvtnKS4Jkr@vtracksolutions.nih4b.mongodb.net/VtrackV1?retryWrites=true&w=majority";
 /* Constants */
 const ReceiveState = {
   INIT: 0,
@@ -263,48 +265,55 @@ function ConvertVideoFile(directory, filename, extension) {
 
 // }
 
-function UpdateProcessStatus(imei, percent) {
-  MongoClient.connect(url, function (err, db) {
-    if (err) throw err;
-    var dbo = db.db("VtrackV1");
-    var myquery = {
-      IMEI: imei.toString(),
-      latestVideo: true,
-      requestStatus: { $in: ["1", "2", "3", "4"] }
-    };
+async function UpdateProcessStatus(imei, percent) {
+  // MongoClient.connect(url, function (err, db) {
+  // if (err) throw err;
+  // var dbo = db.db("VtrackV1");
+  // var myquery = {
+  //   IMEI: imei.toString(),
+  //   latestVideo: true,
+  //   requestStatus: { $in: ["1", "2", "3", "4"] }
+  // };
 
-    //{$set: {"name": req.body.name}}
-    var newvalues = { $set: { CompletePercentage: `${percent}` } };
-    dbo
-      .collection("requestvideos")
-      .updateOne(myquery, newvalues, function (err, res) {
-        if (err) throw err;
-        console.log("1 document updated with IMEI " + imei);
-        db.close();
-      });
-  });
+  // //{$set: {"name": req.body.name}}
+  // var newvalues = { $set: { CompletePercentage: `${percent}` } };
+  // dbo
+  await mongoose.connection.db
+    .collection("requestvideos")
+    .updateOne(myquery, newvalues, function (err, res) {
+      if (err) throw err;
+      console.log("1 document updated with IMEI " + imei);
+    });
+
+  // });
 }
 
-function UpdateRequestStatus(imei) {
-  MongoClient.connect(url, function (err, db) {
-    if (err) throw err;
-    var dbo = db.db("VtrackV1");
-    var myquery = {
-      IMEI: imei.toString(),
-      latestVideo: true,
-      requestStatus: { $in: ["1", "2", "3", "4"] }
-    };
+async function UpdateRequestStatus(imei) {
+  var myquery = {
+    IMEI: imei.toString(),
+    latestVideo: true,
+    requestStatus: { $in: ["1", "2", "3", "4"] }
+  };
 
-    //{$set: {"name": req.body.name}}
-    var newvalues = { $set: { requestStatus: "4" } };
-    dbo
-      .collection("requestvideos")
-      .updateOne(myquery, newvalues, function (err, res) {
-        if (err) throw err;
-        console.log("1 document updated with IMEI " + imei);
-        db.close();
-      });
-  });
+  //{$set: {"name": req.body.name}}
+  var newvalues = { $set: { requestStatus: "4" } };
+  await mongoose.connection.db
+    .collection("requestvideos")
+    .updateOne(myquery, newvalues, function (err, res) {
+      if (err) throw err;
+      console.log("1 document updated with IMEI " + imei);
+    });
+  // MongoClient.connect(url, function (err, db) {
+  //   if (err) throw err;
+  //   var dbo = db.db("VtrackV1");
+  //   dbo
+  //     .collection("requestvideos")
+  //     .updateOne(myquery, newvalues, function (err, res) {
+  //       if (err) throw err;
+  //       console.log("1 document updated with IMEI " + imei);
+  //       db.close();
+  //     });
+  // });
 }
 
 exports.StateMachine = function (
@@ -514,36 +523,40 @@ exports.StateMachine = function (
               device_status.getExtension(),
             Body: temp_file_buff
           };
-          s3.upload(params, function (s3Err, temp_file_buff) {
+          s3.upload(params, async function (s3Err, temp_file_buff) {
             if (s3Err) return LogStringLocal(s3Err);
             uploadedPath = temp_file_buff.Location;
             console.log(
               `File uploaded successfully at ${temp_file_buff.Location}`
             );
 
-            MongoClient.connect(url, function (err, db) {
-              if (err) throw err;
-              var dbo = db.db("VtrackV1");
-              dbo
-                .collection("devices")
-                .findOne(
-                  { deviceIMEI: device_status.getDeviceDirectory() },
-                  function (err, fetchedDevice) {
-                    if (fetchedDevice != null && fetchedDevice != undefined) {
-                      dbo
-                        .collection("deviceassigns")
-                        .findOne(
-                          { DeviceId: fetchedDevice._id.toString() },
-                          function (err, fetchedDeviceassign) {
-                            if (
-                              fetchedDeviceassign != null &&
-                              fetchedDeviceassign != undefined
-                            ) {
-                              dbo.collection("vehicles").findOne(
+            // MongoClient.connect(url, async function (err, db) {
+            //   if (err) throw err;
+            //   var dbo = db.db("VtrackV1");
+
+            // });
+            await mongoose.connection.db
+              .collection("devices")
+              .findOne(
+                { deviceIMEI: device_status.getDeviceDirectory() },
+                async function (err, fetchedDevice) {
+                  if (fetchedDevice != null && fetchedDevice != undefined) {
+                    await mongoose.connection.db
+                      .collection("deviceassigns")
+                      .findOne(
+                        { DeviceId: fetchedDevice._id.toString() },
+                        async function (err, fetchedDeviceassign) {
+                          if (
+                            fetchedDeviceassign != null &&
+                            fetchedDeviceassign != undefined
+                          ) {
+                            await mongoose.connection.db
+                              .collection("vehicles")
+                              .findOne(
                                 {
                                   _id: ObjectId(fetchedDeviceassign.VehicleId)
                                 },
-                                function (err, fetchedVehicle) {
+                                async function (err, fetchedVehicle) {
                                   if (
                                     fetchedVehicle != null &&
                                     fetchedVehicle != undefined
@@ -561,7 +574,7 @@ exports.StateMachine = function (
                                       uploadedPath.replace(".h265", ".mp4");
                                     videoListObject["isSeen"] = false;
 
-                                    dbo
+                                    await mongoose.connection.db
                                       .collection("videolists")
                                       .insertOne(
                                         videoListObject,
@@ -614,7 +627,7 @@ exports.StateMachine = function (
 
                                     // });
 
-                                    dbo
+                                    await mongoose.connection.db
                                       .collection("requestvideos")
                                       .findOneAndUpdate(
                                         myquery,
@@ -675,13 +688,12 @@ exports.StateMachine = function (
                                   }
                                 }
                               );
-                            }
                           }
-                        );
-                    }
+                        }
+                      );
                   }
-                );
-            });
+                }
+              );
 
             temp_file_buff = Buffer.alloc(0);
           });
